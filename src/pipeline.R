@@ -3,6 +3,8 @@ rm(list = ls())
 #BiocInstaller::biocLite("GreenleafLab/chromVAR")
 #BiocManager::install("JASPAR2020")
 #BiocManager::install("TFBSTools")
+#install.packages("Matrix", type = "source")
+#install.packages("irlba", type = "source")
 
 library(ggplot2)
 library(dplyr)
@@ -89,9 +91,10 @@ combined <- NucleosomeSignal(object = combined)
 combined <- TSSEnrichment(object = combined, fast = FALSE)
  
 # # add blacklist ratio and fraction of reads in peaks
-combined$pct_reads_in_peaks <- combined$peak_region_fragments / combined$passed_filters * 100
 ## need to be added
-combined$blacklist_ratio <- combined$blacklist_region_fragments / combined$peak_region_fragments
+#combined$pct_reads_in_peaks <- combined$peak_region_fragments / combined$passed_filters * 100
+## need to be added
+#combined$blacklist_ratio <- combined$blacklist_region_fragments / combined$peak_region_fragments
 
 combined$high.tss <- ifelse(combined$TSS.enrichment > 2, 'High', 'Low')
 TSSPlot(combined, group.by = 'high.tss') + NoLegend()
@@ -122,7 +125,9 @@ DimPlot(object = combined, label = TRUE) + NoLegend()
 
 DimPlot(combined, group.by = "cell_type", label = T)
 
-saveRDS(combined, "data/scATAC/CARE_PORTAL/combined_cell_seurat.rds")
+#saveRDS(combined, "data/scATAC/CARE_PORTAL/combined_cell_seurat.rds")
+
+combined = readRDS("data/scATAC/CARE_PORTAL/combined_cell_seurat.rds")
 
 
 # 
