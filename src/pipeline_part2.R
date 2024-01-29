@@ -15,6 +15,12 @@ library(TFBSTools)
 library("Matrix")
 library("data.table")
 
+devtools::install_github("omarwagih/ggseqlogo")
+
+#BiocManager::install("BSgenome.Hsapiens.UCSC.hg38")
+#BiocManager::install("motifmatchr")
+#BiocManager::install("chromVAR")
+
 set.seed(1234)
 
 combined = readRDS("data/scATAC/CARE_PORTAL/combined_cell_seurat.rds")
@@ -49,7 +55,6 @@ FeaturePlot(
 )
 
 
-
 #############################################################################################
 
 endo = subset(combined, subset = cell_type == "Endothelial")
@@ -65,9 +70,6 @@ FeaturePlot(
 
 # VlnPlot(endo, features = "SPHK1")
 # 
-# DefaultAssay(.combined) <- 'peaks'
-# 
-# DimPlot(object = .combined, label = TRUE) + NoLegend()
 
 DefaultAssay(endo) <- 'peaks'
 Idents(endo) <- endo@meta.data$cell_type
@@ -79,9 +81,9 @@ CoveragePlot(
   extend.downstream = 2000
 )
 
-
+DefaultAssay(combined) <- 'peaks'
 Idents(combined) <- combined@meta.data$cell_type
-# 
+
 CoveragePlot(
   object = combined,
   region = "SPHK1",
@@ -93,76 +95,38 @@ CoveragePlot(
   links = TRUE
 )
 
+####################################
 
-
-# 
-# Idents(endo) <- endo@meta.data$cell.type
-# 
-# CoveragePlot(
-#   object = endo,
-#   region = "SPHK1",
-#   extend.upstream = 40000,
-#   extend.downstream = 20000
-# )
-
-# DimPlot(object = .combined, label = TRUE) + NoLegend()
-
-
-#######################################################
-library(BSgenome.Hsapiens.UCSC.hg19)
+#library(BSgenome.Hsapiens.UCSC.hg19)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(motifmatchr)
+library(chromVAR)
 
 # Get a list of motif position frequency matrices from the JASPAR database
 pfm <- getMatrixSet(
   x = JASPAR2020,
   opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = FALSE)
 )
-# 
-DefaultAssay(combined) <- "peaks"
-combined
-# 
 
-# # 
-main.chroms <- standardChromosomes(BSgenome.Hsapiens.UCSC.hg19)
+#DefaultAssay(combined) <- "peaks"
+#combined
+
+main.chroms <- standardChromosomes(BSgenome.Hsapiens.UCSC.hg38)
+table(as.character(seqnames(granges(combined))))
 keep.peaks <- which(as.character(seqnames(granges(combined))) %in% main.chroms)
 combined[["peaks"]] <- subset(combined[["peaks"]], features = rownames(combined[["peaks"]])[keep.peaks])
 combined[["peaks"]] <- keepStandardChromosomes(combined[["peaks"]])
-# 
+table(as.character(seqnames(granges(combined))))
+
 # add motif information
 combined <- AddMotifs(
   object = combined,
-  genome = BSgenome.Hsapiens.UCSC.hg19,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
   pfm = pfm
 )
-
-######
-
-library(JASPAR2020)
-library(TFBSTools)
-library(motifmatchr)
-library("BSgenome.Hsapiens.UCSC.hg19")
-
-# Get a list of motif position frequency matrices from the JASPAR database
-pfm <- getMatrixSet(
-  x = JASPAR2020,
-  opts = list(species = 9606) # 9606 is the species code for human
-)
-
-# Scan the DNA sequence of each peak for the presence of each motif
-motif.matrix <- CreateMotifMatrix(
-  features = granges(combined),
-  pwm = pfm,
-  genome = 'hg19'
-)
-
+combined
 Motifs(combined)
 
-pfm_tmp <- GetMotifData(object = motif, slot = "pwm")
-
-
-####
-# # 
-# Motifs(combined) <- motif
-# # 
 da_peaks <- FindMarkers(
   object = combined,
   ident.1 = 'Endothelial',
@@ -174,8 +138,44 @@ da_peaks <- FindMarkers(
 
 # get top differentially accessible peaks
 top.da.peak <- rownames(da_peaks[da_peaks$p_val < 0.005, ])
+top.da.peak
 
-####
+# test enrichment
+enriched.motifs <- FindMotifs(
+  object = combined,
+  features = top.da.peak
+)
+enriched.motifs
+table(enriched.motifs$motif.name %in% "PRPSAP1")
+
+MotifPlot(
+  object = combined,
+  motifs = head(rownames(enriched.motifs))
+)
+
+#### Computing motif activities
+p1 = DimPlot(combined, group.by = "cell_type", label = T)
+p1
+
+combined <- RunChromVAR(
+  object = combined,
+  genome = BSgenome.Hsapiens.UCSC.hg38 
+)
+
+DefaultAssay(combined) <- 'chromvar'
+
+# look at the activity of Pparg::Rxra
+p2 <- FeaturePlot(
+  object = combined,
+  features = "MA0065.2",
+  min.cutoff = 'q10',
+  max.cutoff = 'q90',
+  pt.size = 0.1
+)
+p1 + p2
+
+#################
+
 DefaultAssay(combined) <- "peaks"
 open.peaks <- AccessiblePeaks(combined, idents = c("Endothelial"), )
 ch17.peak = open.peaks[grep("chr17", open.peaks)]
@@ -184,127 +184,35 @@ overlap_peaks <- findOverlaps(combined, StringToGRanges("chr17-74360000-74385000
 peaksoi = as.character(granges(combined)[queryHits(overlap_peaks)])
 peaksoi = gsub(":", "-", peaksoi)
 
-DefaultAssay(endo) <- "peaks"
-# test enrichment
-enriched.motifs <- FindMotifs(
-  object = endo,
-  features = as.character(peaksoi)
-)
+
+################################################ Endo specifc
 
 
-p1 = DimPlot(combined, group.by = "cell_type", label = T)
-p1
-### motific activity
-# 
-
-combined
-
-combined <- RunChromVAR(
-  object = combined,
-  genome = BSgenome.Hsapiens.UCSC.hg19 
-)
-
-DefaultAssay(combined) <- 'chromvar'
-enriched.motifs[enriched.motifs$motif.name %in% c("PRPSAP1", "MYH7", "EGFL7", "SPHK1"),]
-
-# look at the activity of Mef2c
-p2 <- FeaturePlot(
-  object = e,
-  features = "MA0066.1",
-  min.cutoff = 'q10',
-  max.cutoff = 'q90',
-  pt.size = 0.1
-)
-p1 + p2
-
-# 
-# 
-# 
-# # get top differentially accessible peaks
-# top.da.peak <- rownames(da_peaks[da_peaks$p_val < 0.005, ])
-# 
-# # test enrichment
-# enriched.motifs <- FindMotifs(
-#   object = combined,
-#   features = top.da.peak
-# )
-# 
-# MotifPlot(
-#   object = combined,
-#   motifs = head(rownames(enriched.motifs))
-# )
-# 
-# 
-
-p1 = DimPlot(combined, group.by = "cell_type", label = T)
-p1
-### motific activity
-# 
-
-combined
-
-combined <- RunChromVAR(
-  object = combined,
-  genome = BSgenome.Hsapiens.UCSC.hg38
-)
-
-DefaultAssay(combined) <- 'chromvar'
-
-# look at the activity of Mef2c
-p2 <- FeaturePlot(
-  object = combined,
-  features = "SPHK1",
-  min.cutoff = 'q10',
-  max.cutoff = 'q90',
-  pt.size = 0.1
-)
-p1 + p2
-
-
-p2 <- FeaturePlot(
-  object = combined,
-  features = "PRPSAP1",
-  min.cutoff = 'q10',
-  max.cutoff = 'q90',
-  pt.size = 0.1
-)
-p1 + p2
-# 
-# 
-# differential.activity <- FindMarkers(
-#   object = combined,
-#   ident.1 = 'Pvalb',
-#   ident.2 = 'Sst',
-#   only.pos = TRUE,
-#   mean.fxn = rowMeans,
-#   fc.name = "avg_diff"
-# )
-# 
-# MotifPlot(
-#   object = combined,
-#   motifs = head(rownames(differential.activity)),
-#   assay = 'peaks'
-# )
-
-
-endo = subset(combined, subset = cell_type == "Endothelial")
-DimPlot(endo, group.by = "cell_type")
-
-p1 = DimPlot(endo, group.by = "cell_type", label = T)
-p1
-### motific activity
-# 
-#############################################
 endo
 DefaultAssay(endo) <- "peaks"
+genome(endo) <- "hg38"
 endo[['peaks']]
+
+# main.chroms <- standardChromosomes(BSgenome.Hsapiens.UCSC.hg38)
+# table(as.character(seqnames(granges(endo))))
+# keep.peaks <- which(as.character(seqnames(granges(endo))) %in% main.chroms)
+# endo[["peaks"]] <- subset(endo[["peaks"]], features = rownames(endo[["peaks"]])[keep.peaks])
+# endo[["peaks"]] <- keepStandardChromosomes(endo[["peaks"]])
+# table(as.character(seqnames(granges(endo))))
+
+# add motif information
+endo <- AddMotifs(
+  object = endo,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  pfm = pfm
+)
+
+###
 
 endo <- RunChromVAR(
   object = endo,
   genome = BSgenome.Hsapiens.UCSC.hg38
 )
-
-#enriched.motifs[enriched.motifs$motif.name %in% c("PRPSAP1", "MYH7", "EGFL7", "SPHK1"),]
 
 de.motif <- rownames(endo)[grep("chr17", rownames(endo))]
 bg.peaks <- tail(rownames(combined))
@@ -357,41 +265,5 @@ p2 <- FeaturePlot(
 )
 p1 + p2
 
-
-DefaultAssay(combined) <- "peaks"
-
-# find peaks open in Pvalb or Sst cells
-open.peaks <- AccessiblePeaks(combined, idents = c("Endothelial"), )
-
-# match the overall GC content in the peak set
-meta.feature <- GetAssayData(combined, assay = "peaks", slot = "meta.features")
-peaks.matched <- MatchRegionStats(
-  meta.feature = meta.feature[open.peaks, ],
-  query.feature = meta.feature[top.da.peak, ],
-  n = 50000
-)
-
-# test enrichment
-enriched.motifs <- FindMotifs(
-  object = combined,
-  features = top.da.peak
-)
-
-enriched.motifs[enriched.motifs$motif.name %in% c("PRPSAP1", "MYH7", "EGFL7", "SPHK1"),]
-
-MotifPlot(
-  object = combined,
-  motifs = head(rownames(enriched.motifs))
-)
-
-FeaturePlot(
-  object = combined,
-  features = "KLF15",
-  min.cutoff = 'q10',
-  max.cutoff = 'q90',
-  pt.size = 0.1
-)
-
-
-
+writeLines(capture.output(sessionInfo()), "sessionInfo.txt")
 

@@ -57,7 +57,7 @@ mat <- mat %>%
 chrom_assay <- CreateChromatinAssay(
   counts = t(mat),
   sep = c(":", "-"),
-  genome = 'hg19',
+  genome = 'hg38',
   fragments = fragments_path,
   validate.fragments=TRUE,
   annotation = annotations
