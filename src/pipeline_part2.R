@@ -208,6 +208,8 @@ endo <- AddMotifs(
 )
 
 ###
+Motifs(endo)
+# A Motif object containing 746 motifs in 287415 regions
 
 endo <- RunChromVAR(
   object = endo,
